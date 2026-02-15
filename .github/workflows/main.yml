@@ -1,0 +1,46 @@
+name: BeamNG-Ready-RDP
+
+on:
+  workflow_dispatch:
+
+jobs:
+  beamng-rdp:
+    # IMPORTANT: standard 'windows-latest' has NO GPU. 
+    # Use a GPU-labeled runner if available in your org.
+    runs-on: windows-latest 
+    timeout-minutes: 3600
+
+    steps:
+      - name: Prepare GPU Acceleration
+        run: |
+          # Enable Hardware-Accelerated RDP (RemoteFX)
+          Set-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services' -Name "fEnableRemoteFXComputation" -Value 1 -Force
+          # Boost RDP Frame Rate to 60 FPS
+          Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations' -Name "DWMFRAMEINTERVAL" -Value 15 -PropertyType DWord -Force
+
+      - name: Install Essential Gaming Runtimes
+        run: |
+          # Install DirectX and VC++ Redistributables needed for BeamNG
+          choco install directx vcredist140 -y
+
+      - name: Configure RDP & User
+        run: |
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
+          $password = "BeamNG_Drive_2026!" # Change this!
+          $securePass = ConvertTo-SecureString $password -AsPlainText -Force
+          New-LocalUser -Name "Driver" -Password $securePass -AccountNeverExpires
+          Add-LocalGroupMember -Group "Administrators" -Member "Driver"
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "Driver"
+
+      - name: Setup Tailscale
+        run: |
+          curl -L "https://pkgs.tailscale.com/stable/tailscale-setup-latest.msi" -o tailscale.msi
+          msiexec.exe /i tailscale.msi /quiet /norestart
+          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=beamng-vm
+          $tsIP = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
+          Write-Host "CONNECT TO: $tsIP"
+
+      - name: Keep Alive
+        run: |
+          Write-Host "RDP is Ready. Log in with user 'Driver' and your password."
+          while($true) { Start-Sleep -Seconds 60 }
