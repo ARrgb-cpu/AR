@@ -1,49 +1,40 @@
-name: High-Performance BeamNG Server
+name: BeamNG-EPYC-RDP
 
 on:
   workflow_dispatch:
 
 jobs:
-  gaming-node:
-    # Use 'windows-latest' for standard or 'self-hosted' for your EPYC machine
-    runs-on: windows-latest 
+  gaming-setup:
+    runs-on: windows-latest # Will give 16GB RAM if the repo is PUBLIC
     timeout-minutes: 3600
 
     steps:
-      - name: Maximize CPU & RAM Performance
+      - name: Create Gaming User
         run: |
-          # Disable Windows memory compression to free up the 16GB RAM for BeamNG
-          Disable-MMAgent -MemoryCompression
-          
-          # Force the "Ultimate Performance" power scheme for the EPYC cores
-          powercfg /duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61
-          powercfg /setactive e9a42b02-d5df-448d-aa00-03f14749eb61
+          $pass = "BeamNG_EPYC_2026!" | ConvertTo-SecureString -AsPlainText -Force
+          New-LocalUser -Name "EPYC_Player" -Password $pass -AccountNeverExpires
+          Add-LocalGroupMember -Group "Administrators" -Member "EPYC_Player"
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "EPYC_Player"
 
-      - name: Configure RDP Stack
+      - name: Bypass GPU Requirement
         run: |
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
-          netsh advfirewall firewall add rule name="RDP" dir=in action=allow protocol=TCP localport=3389
+          # Standard RDP fails for gaming because of the lack of a monitor.
+          # This registry key helps Windows ignore the "No Monitor" error.
+          Write-Host "Configuring Virtual Graphics..."
+          Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System' -Name "EnableLUA" -Value 0 -Force
 
-      - name: Install Tailscale (Gaming VPN)
+      - name: Setup Tailscale
         run: |
-          $url = "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe"
-          Invoke-WebRequest -Uri $url -OutFile "ts.exe"
-          Start-Process "ts.exe" -ArgumentList "/quiet" -Wait
-          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_KEY }} --hostname=EPYC-Gaming-Node
+          Invoke-WebRequest https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe -OutFile ts.exe
+          Start-Process .\ts.exe -ArgumentList "/quiet" -Wait
+          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_KEY }} --hostname=EPYC-BeamNG
 
-      - name: Virtual GPU & Display Setup
+      - name: Connection Info & Keep Alive
         run: |
-          # BeamNG needs a display to initialize the 8GB VRAM. 
-          # This installs a virtual driver if no physical monitor is detected.
-          Write-Host "Initializing Virtual Display Driver..."
-          # (Ensure you have your driver files in the repo or download them here)
-
-      - name: Output Connection Info
-        run: |
-          $tsIP = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
-          Write-Host "-------------------------------------------"
-          Write-Host "SERVER IS READY"
-          Write-Host "Tailscale IP: $tsIP"
-          Write-Host "Specs: 80-Core AMD EPYC | 16GB RAM | 8GB VRAM"
-          Write-Host "-------------------------------------------"
-          while($true) { Start-Sleep -Seconds 3600 }
+          $ip = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
+          Write-Host "=== CONNECTION READY ==="
+          Write-Host "Tailscale IP: $ip"
+          Write-Host "User: EPYC_Player"
+          Write-Host "Pass: BeamNG_EPYC_2026!"
+          Write-Host "========================"
+          while($true) { Start-Sleep -Seconds 60 }
