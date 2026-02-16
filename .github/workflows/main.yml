@@ -1,40 +1,30 @@
-name: BeamNG-EPYC-RDP
+name: BeamNG-NoGPU-16GB
 
 on:
   workflow_dispatch:
 
 jobs:
-  gaming-setup:
-    runs-on: windows-latest # Will give 16GB RAM if the repo is PUBLIC
-    timeout-minutes: 3600
-
+  run-server:
+    runs-on: windows-latest # Public repos get 16GB RAM
     steps:
-      - name: Create Gaming User
+      - name: Install Virtual Display Driver
         run: |
-          $pass = "BeamNG_EPYC_2026!" | ConvertTo-SecureString -AsPlainText -Force
-          New-LocalUser -Name "EPYC_Player" -Password $pass -AccountNeverExpires
-          Add-LocalGroupMember -Group "Administrators" -Member "EPYC_Player"
-          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "EPYC_Player"
+          # Download a driver that emulates a GPU/Monitor
+          Invoke-WebRequest "https://github.com/adyusuf/Virtual-Display-Driver/releases/download/v2.0/IddSampleDriver.zip" -OutFile "vdd.zip"
+          Expand-Archive vdd.zip -DestinationPath "C:\vdd"
+          # NOTE: Manual installation in Device Manager is usually required 
+          # but this prepares the files for your RDP session.
 
-      - name: Bypass GPU Requirement
-        run: |
-          # Standard RDP fails for gaming because of the lack of a monitor.
-          # This registry key helps Windows ignore the "No Monitor" error.
-          Write-Host "Configuring Virtual Graphics..."
-          Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System' -Name "EnableLUA" -Value 0 -Force
-
-      - name: Setup Tailscale
+      - name: Configure Tailscale
         run: |
           Invoke-WebRequest https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe -OutFile ts.exe
           Start-Process .\ts.exe -ArgumentList "/quiet" -Wait
-          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_KEY }} --hostname=EPYC-BeamNG
+          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_KEY }} --hostname=NoGPU-EPYC
 
-      - name: Connection Info & Keep Alive
+      - name: Maintain RDP Session
         run: |
           $ip = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
-          Write-Host "=== CONNECTION READY ==="
           Write-Host "Tailscale IP: $ip"
-          Write-Host "User: EPYC_Player"
-          Write-Host "Pass: BeamNG_EPYC_2026!"
-          Write-Host "========================"
+          Write-Host "Username: runneradmin"
+          # Keep the 16GB RAM runner alive
           while($true) { Start-Sleep -Seconds 60 }
