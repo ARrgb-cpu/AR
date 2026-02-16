@@ -1,46 +1,41 @@
-name: BeamNG-Ready-RDP
+name: 80-Core BeamNG Server
 
 on:
   workflow_dispatch:
 
 jobs:
-  beamng-rdp:
-    # IMPORTANT: standard 'windows-latest' has NO GPU. 
-    # Use a GPU-labeled runner if available in your org.
-    runs-on: windows-latest 
+  run-beast:
+    # Use 'self-hosted' to point to your actual 80-core EPYC machine
+    runs-on: self-hosted 
     timeout-minutes: 3600
 
     steps:
-      - name: Prepare GPU Acceleration
+      - name: Optimize 80-Core CPU for Physics
         run: |
-          # Enable Hardware-Accelerated RDP (RemoteFX)
-          Set-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services' -Name "fEnableRemoteFXComputation" -Value 1 -Force
-          # Boost RDP Frame Rate to 60 FPS
-          Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations' -Name "DWMFRAMEINTERVAL" -Value 15 -PropertyType DWord -Force
+          # BeamNG loves cores, but Windows often parks them to save power.
+          # Force the 'High Performance' power plan.
+          powercfg /setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c
+          # Set process priority for gaming services
+          Get-Process -Name "BeamNG.drive" -ErrorAction SilentlyContinue | ForEach-Object { $_.PriorityClass = 'High' }
 
-      - name: Install Essential Gaming Runtimes
+      - name: Configure Tailscale Direct Connection
         run: |
-          # Install DirectX and VC++ Redistributables needed for BeamNG
-          choco install directx vcredist140 -y
+          # Connect to your Tailnet
+          # Ensure you use '--accept-routes' if your server is on a different subnet
+          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_KEY }} --hostname=epyc-beamng-host
 
-      - name: Configure RDP & User
+      - name: Setup Virtual Display (For Headless Servers)
         run: |
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
-          $password = "BeamNG_Drive_2026!" # Change this!
-          $securePass = ConvertTo-SecureString $password -AsPlainText -Force
-          New-LocalUser -Name "Driver" -Password $securePass -AccountNeverExpires
-          Add-LocalGroupMember -Group "Administrators" -Member "Driver"
-          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "Driver"
+          # If your EPYC server doesn't have a monitor plugged in, RDP/Sunshine 
+          # needs a virtual display to 'see' the 8GB VRAM.
+          # Download and install IddSampleDriver (Optional but recommended)
+          Write-Host "Ensure IddSampleDriver is installed for 4K/144Hz streaming support."
 
-      - name: Setup Tailscale
+      - name: Maintain Server Loop
         run: |
-          curl -L "https://pkgs.tailscale.com/stable/tailscale-setup-latest.msi" -o tailscale.msi
-          msiexec.exe /i tailscale.msi /quiet /norestart
-          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=beamng-vm
-          $tsIP = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
-          Write-Host "CONNECT TO: $tsIP"
-
-      - name: Keep Alive
-        run: |
-          Write-Host "RDP is Ready. Log in with user 'Driver' and your password."
-          while($true) { Start-Sleep -Seconds 60 }
+          $ip = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
+          Write-Host "=== BEAST SERVER ACTIVE ==="
+          Write-Host "Connect via Tailscale IP: $ip"
+          Write-Host "Hardware: 80-Core AMD EPYC | 16GB+ RAM | 8GB VRAM"
+          
+          while($true) { Start-Sleep -Seconds 300 }
